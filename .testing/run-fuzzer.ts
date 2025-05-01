@@ -11,7 +11,7 @@ import { Cst } from './cst/cst-parser';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const TEST_COUNT = 0;
+const TEST_COUNT = 5;
 const FAILED_TESTS_DIR = path.join(__dirname, 'failed-tests');
 const SAVE_BAD_TESTS = false;
 
@@ -45,7 +45,6 @@ async function runTests() {
   }
 
   let previousTestCases: string[] = [];
-  let loadedCount = 0;
   const previousTestFiles = fs.readdirSync(FAILED_TESTS_DIR).filter(file => file.endsWith('.tact'));
   for (const file of previousTestFiles) {
       const filePath = path.join(FAILED_TESTS_DIR, file);
@@ -94,7 +93,7 @@ async function runTests() {
       passed++;
       console.log(`✅ Test case passed: ${testCase}`);
     } catch (error) {
-      const filename = `test-${(failed + loadedCount).toString().padStart(3, '0')}.tact`;
+      const filename = `test-${failed.toString().padStart(3, '0')}.tact`;
       const filepath = path.join(FAILED_TESTS_DIR, filename);
 
       if (SAVE_BAD_TESTS) {

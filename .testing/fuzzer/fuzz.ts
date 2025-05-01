@@ -28,12 +28,23 @@ class TactFuzzer {
   private pick<T>(arr: T[]): T {
     return arr[Math.floor(this.rng() * arr.length)]
   }
+
+  // Check if a character is a valid name part (alphanumeric or underscore)
+  isNamePart(c: string | undefined): boolean {
+    if (!c) return false
+    return /^[a-zA-Z0-9_]$/.test(c)
+  }
   
   // Generate a program starting from the main rule (usually 'Program')
   generate(): string {
     const context: Context = { maxWidth: this.maxWidth, maxDepth: this.maxDepth, depth: 0 }
     let builder: Builder = []
     Module(context, builder)
+    for (let i = 1; i < builder.length; i++) {
+      if (this.isNamePart(builder[i][0]) && this.isNamePart(builder[i - 1].at(-1))) {
+        builder[i - 1] += " "
+      }
+    }
     return builder.join('')
   }
   

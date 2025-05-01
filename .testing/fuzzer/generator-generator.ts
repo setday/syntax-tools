@@ -169,8 +169,7 @@ const storeNodeIfNotEmpty = () => t.ifStatement(
 //     pass
 // }
 export const generateLookPos = (lookNeg: g.LookPos): t.Statement[] => {
-    const stmts: t.Statement[] = []
-    return stmts
+    return []
 }
 
 // !!! IGNORE (we don't generate negation) !!!
@@ -179,8 +178,7 @@ export const generateLookPos = (lookNeg: g.LookPos): t.Statement[] => {
 //     pass
 // }
 export const generateLookNeg = (lookNeg: g.LookNeg): t.Statement[] => {
-    const stmts: t.Statement[] = []
-    return stmts
+    return []
 }
 
 export const compileCall = (call: g.Call): t.Expression => {
@@ -475,14 +473,10 @@ export const generateOptional = (node: g.Optional, ruleName: string): t.Statemen
     return stmts
 }
 
+// !!! IGNORE (we don't care about the names) !!!
 // A = #B
-// A = B' '
 // const A = (ctx: Context, b: Builder, rule: Rule): boolean => {
 //     B(ctx, b)
-//     const lastChar = b.at(-1);
-//     if (lastChar && (lastChar >= "a" && lastChar <= "z" || lastChar >= "A" && lastChar <= "Z")) {
-//         b.push(" ");
-//     }
 // }
 export const generateLex = (node: g.Lex, ruleName: string): t.Statement[] => {
     const stmts: t.Statement[] = []
@@ -490,66 +484,6 @@ export const generateLex = (node: g.Lex, ruleName: string): t.Statement[] => {
     // B(ctx, b)
     const clause = generateClause(node.expr, undefined, t.identifier("b"))
     stmts.push(t.expressionStatement(clause))
-
-    stmts.push(t.variableDeclaration(
-        'const',
-        [
-            t.variableDeclarator(t.identifier("lastChar"), t.callExpression(
-                t.memberExpression(
-                    t.identifier("b"),
-                    t.identifier("at")
-                ), [
-                    t.numericLiteral(-1),
-                ]
-            ))
-        ]
-    ))
-
-    stmts.push(t.ifStatement(
-        t.logicalExpression(
-            '&&',
-            t.identifier("lastChar"),
-            t.logicalExpression(
-                    '||',
-                    t.logicalExpression(
-                        '&&',
-                        t.binaryExpression(
-                            '>=',
-                            t.identifier("lastChar"),
-                            t.stringLiteral('a')
-                        ),
-                        t.binaryExpression(
-                            '<=',
-                            t.identifier("lastChar"),
-                            t.stringLiteral('z')
-                        )
-                    ),
-                    t.logicalExpression(
-                        '&&',
-                        t.binaryExpression(
-                            '>=',
-                            t.identifier("lastChar"),
-                            t.stringLiteral('A')
-                        ),
-                        t.binaryExpression(
-                            '<=',
-                            t.identifier("lastChar"),
-                            t.stringLiteral('Z')
-                        )
-                    ),
-                ),
-            ),
-            t.blockStatement([
-                t.expressionStatement(t.callExpression(
-                    t.memberExpression(
-                        t.identifier("b"),
-                        t.identifier("push")
-                    ), [
-                        t.stringLiteral(' '),
-                    ])
-                )
-            ])
-    ))
 
     return stmts
 }
