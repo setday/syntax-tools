@@ -69,6 +69,6 @@ export function writeTestCases(count: number = 10, outputDir: string = "fuzzy-te
 }
 
 // If run directly, generate some test cases
-if (true) {
+if (import.meta.url === new URL(import.meta.url).href) {
   writeTestCases(5)
 }

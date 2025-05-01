@@ -7,7 +7,7 @@ import {inspect} from "util"
 import * as fs from "fs"
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { exit } from "process"
+
 const log = (obj: unknown) => console.log(inspect(obj, {colors: true, depth: Infinity}))
 
 const ast = $.parse({

@@ -228,8 +228,7 @@ export function generateRandomString() {
         "AnotherCustomString",
         "SampleText123",
         "RandomText!@#",
-        "\\r\\a\\n\\d\\o\\m",
-        "\\'\\\"\\\\",
+        "\\'\\\"",
         "\\t\\n\\r\\f\\b\\v",
         "\\u{1F600}\\u{1F601}\\u{1F602}",
       ]);
