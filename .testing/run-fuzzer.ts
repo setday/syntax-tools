@@ -1,127 +1,141 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { generateTestCases } from './fuzzer/fuzz'
-import { parseCode } from "./cst/cst-helpers"
-import { removeComments, removeSpacesWithUndefined, extractComments } from "./fuzzer/fuzzer-helpers"
-import { format } from "./formatter/formatter";
 import { fileURLToPath } from 'url'
 import { dirname } from 'path';
-import { Cst } from './cst/cst-parser';
+import { 
+  loadPreviousTestCases, 
+  generateTests, 
+  processTestCase, 
+  saveFailedTest, 
+  generateErrorReport,
+  TestConfig
+} from './fuzzer/test-runner';
+import { stopElements } from './fuzzer/stop-elements';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const TEST_COUNT = 5;
-const FAILED_TESTS_DIR = path.join(__dirname, 'failed-tests');
-const SAVE_BAD_TESTS = false;
+// Configuration with defaults
+const CONFIG: TestConfig = {
+  testCount: 5,
+  failedTestsDir: path.join(__dirname, 'failed-tests'),
+  saveBadTests: false,
 
+  maxDepth: 20,
+  maxSpaces: 0,
 
-function checkComments(original: Cst[], formatted: Cst[]): boolean {
-  const originalJoined = original.map(c => c.children[1].text.trim()).join('\n').trim();
-  const formattedJoined = formatted.map(c => c.children[1].text.trim()).join('\n').trim();
-  return originalJoined === formattedJoined;
+  stopCodes: stopElements,
+};
+
+// Parse command line arguments
+function parseArgs() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i].toLowerCase();
+    
+    if (arg === '--count' || arg === '-c') {
+      CONFIG.testCount = parseInt(args[++i], 10);
+    } else if (arg === '--save-bad' || arg === '-s') {
+      CONFIG.saveBadTests = true;
+    } else if (arg === '--dir' || arg === '-d') {
+      CONFIG.failedTestsDir = path.resolve(args[++i]);
+    } else if (arg === '--max-depth' || arg === '-m') {
+      CONFIG.maxDepth = parseInt(args[++i], 10);
+    } else if (arg === '--seed') {
+      CONFIG.seed = parseInt(args[++i], 10);
+    } else if (arg === '--help' || arg === '-h') {
+      printHelp();
+      process.exit(0);
+    }
+  }
 }
 
-function checkCST(a: Cst, b: Cst): boolean {
-  if (a.$ === "leaf") return b.$ === "leaf" && a.text === b.text;
-  if (a.$ === "node") {
-    if (b.$ !== "node" || a.type !== b.type || a.group !== b.group || a.field !== b.field) return false;
-    if (a.children.length !== b.children.length) return false;
-    for (let i = 0; i < a.children.length; i++) {
-      a.children
-      if (!checkCST(a.children[i], b.children[i])) return false;
-    }
-    return true;
-  }
-  return false;
+function printHelp() {
+  console.log(`
+Tact Fuzzer - Generate and test random Tact code snippets
+
+Options:
+  --count, -c       Number of test cases to generate (default: ${CONFIG.testCount})
+  --save-bad, -s    Save failing test cases to disk (default: ${CONFIG.saveBadTests})
+  --dir, -d         Directory to save failed tests (default: ${CONFIG.failedTestsDir})
+  --max-depth, -m   Maximum depth for AST generation (default: ${CONFIG.maxDepth})
+  --seed            Random seed for reproducible generation
+  --help, -h        Show this help message
+  `);
 }
 
 /**
  * Run fuzzer and tests
  */
 async function runTests() {
-  if (!fs.existsSync(FAILED_TESTS_DIR)) {
-      fs.mkdirSync(FAILED_TESTS_DIR, { recursive: true });
+  parseArgs();
+
+  // Ensure output directory exists
+  if (!fs.existsSync(CONFIG.failedTestsDir)) {
+    fs.mkdirSync(CONFIG.failedTestsDir, { recursive: true });
   }
 
-  let previousTestCases: string[] = [];
-  const previousTestFiles = fs.readdirSync(FAILED_TESTS_DIR).filter(file => file.endsWith('.tact'));
-  for (const file of previousTestFiles) {
-      const filePath = path.join(FAILED_TESTS_DIR, file);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      previousTestCases.push(content);
-      loadedCount++;
-  }
+  // Load previous failed tests
+  const previousTestCases = loadPreviousTestCases(CONFIG.failedTestsDir);
+  console.log(`Loaded ${previousTestCases.length} previously failed test cases.`);
 
-  console.log(`Generating ${TEST_COUNT} test files...`);
-  const generatedTestCases = generateTestCases(TEST_COUNT);
+  // Generate new test cases
+  const generatedTestCases = generateTests(CONFIG);
 
-  let testCases = [...previousTestCases, ...generatedTestCases];
+  // Combine test cases
+  const testCases = [...previousTestCases, ...generatedTestCases];
   
   let passed = 0;
   let failed = 0;
-  let errors: {file: string, error: string}[] = [];
+  let errors: {file: string, error: string, testCase: string}[] = [];
     
-  for (const testCase of testCases) {
-    try {
-      // const normalizedCase = normalizeIndentation(testCase).trim();
-      const caseCST = parseCode(testCase);
-      const caseWithoutSpaces = removeSpacesWithUndefined(caseCST);
-
-      // Redundant check for !caseCST
-      if (!caseCST || !caseWithoutSpaces) {
-        throw new Error("Failed to parse test case.\n!!!WARNING!!! The problem may be in the generator, not in the formatter.");
-      }
-
-      const formatted = format(caseCST)
-      const formattedCST = parseCode(formatted);
-
-      const formatedWithoutSpaces = removeSpacesWithUndefined(formattedCST);
-
-      if (!formatedWithoutSpaces) {
-        throw new Error("Failed to parse formatted CST");
-      }
-
-      if (!checkCST(removeComments(caseWithoutSpaces), removeComments(formatedWithoutSpaces))) {
-        throw new Error("Formatted CST does not match original CST");
-      }
-
-      if (!checkComments(extractComments(caseWithoutSpaces), extractComments(formatedWithoutSpaces))) {
-        throw new Error("Comments mismatch");
-      }
-
+  // Process each test case
+  for (let i = 0; i < testCases.length; i++) {
+    const testCase = testCases[i];
+    const result = await processTestCase(testCase);
+    
+    if (result.success) {
       passed++;
-      console.log(`✅ Test case passed: ${testCase}`);
-    } catch (error) {
+      console.log(`✅ [${i + 1}/${testCases.length}] Test case passed (${testCase.length} -> ${Math.floor(testCase.length * result.details.compressionRatio)} bytes)`);
+    } else {
       const filename = `test-${failed.toString().padStart(3, '0')}.tact`;
-      const filepath = path.join(FAILED_TESTS_DIR, filename);
 
-      if (SAVE_BAD_TESTS) {
-        fs.writeFileSync(filepath, testCase);
+      // Save failing test cases if enabled
+      if (CONFIG.saveBadTests) {
+        saveFailedTest(testCase, filename, CONFIG.failedTestsDir);
+        console.log(`   Test case saved to ${path.join(CONFIG.failedTestsDir, filename)}`);
       }
 
-      console.error(`❌ Error processing test case: ${error}`);
-      console.log(`Saved failed test case to ${filepath}`);
+      console.error(`❌ [${i + 1}/${testCases.length}] Test failed: ${result.error}`);
 
-      errors.push({file: filename, error: error.message});
+      errors.push({
+        file: filename, 
+        error: result.error || 'Unknown error', 
+        testCase
+      });
       failed++;
     }
   }
   
-  console.log('\n--- Test Summary ---');
+  // Print summary
+  console.log('\n=== Test Summary ===');
   console.log(`Total tests: ${testCases.length}`);
-  console.log(`Passed: ${passed}`);
-  console.log(`Failed: ${failed}`);
+  console.log(`Passed: ${passed} (${((passed / testCases.length) * 100).toFixed(1)}%)`);
+  console.log(`Failed: ${failed} (${((failed / testCases.length) * 100).toFixed(1)}%)`);
   
+  // Generate error report
   if (failed > 0) {
-    const report = errors.map(e => `${e.file}:\n${e.error}\n---\n`).join('\n');
-    fs.writeFileSync(path.join(FAILED_TESTS_DIR, 'error-report.txt'), report);
-    console.log(`\nError details written to ${path.join(FAILED_TESTS_DIR, 'error-report.txt')}`);
+    const reportPath = generateErrorReport(errors, CONFIG.failedTestsDir);
+    console.log(`\nError details written to ${reportPath}`);
   }
   
   return { passed, failed };
 }
 
+// Run tests if executed directly
 if (import.meta.url === new URL(import.meta.url).href) {
-  runTests().catch(console.error);
+  runTests().catch(error => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
 }

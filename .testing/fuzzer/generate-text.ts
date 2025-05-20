@@ -128,13 +128,14 @@ export function generateRandomDocComment(): string {
   }
 }
 
-export function generateName() {
+export function generateName(firstCapitalized: boolean = false): string {
   const nameTypes = [
     "random", 
     "true_random",
   ];
   
   const type = randomChoice(nameTypes);
+  let typeName = "";
 
   switch (type) {
     case "random":
@@ -151,7 +152,8 @@ export function generateName() {
         "trait", "with", "interface", "contract", "fun",
       ];
       
-      return `${randomChoice(prefixes)}${randomChoice(suffixes)}`;
+      typeName = `${randomChoice(prefixes)}${randomChoice(suffixes)}`;
+      break;
 
     case "true_random":
       const length = Math.floor(Math.random() * 20) + 1;
@@ -163,11 +165,22 @@ export function generateName() {
       if (randomName[0].match(/[0-9]/)) {
         randomName = "_" + randomName;
       }
-      return randomName;
+      typeName = randomName;
+      break;
 
     default:
-      return "DefaultName";
+      typeName = "DefaultName";
   }
+
+  if (firstCapitalized) {
+    if (typeName.charAt(0) === "_") {
+      typeName = "T" + typeName;
+    } else {
+      typeName = typeName.charAt(0).toUpperCase() + typeName.slice(1);
+    }
+  }
+
+  return typeName;
 }
 
 export function generateRandomString() {

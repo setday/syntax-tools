@@ -37,17 +37,47 @@ export function randomChoice<T>(items: T[]): T {
 
 /**
  * Picks multiple random items from an array
+ * @param items Array to pick from
+ * @param count Number of items to pick
+ * @param unique If true, items will not be repeated
+ * @returns Array of picked items
  */
-export function randomChoices<T>(items: T[], count: number): T[] {
+export function randomChoices<T>(items: T[], count: number, unique: boolean = false): T[] {
   const result: T[] = [];
   const available = [...items];
   
   for (let i = 0; i < count && available.length > 0; i++) {
     const index = randomInt(0, available.length - 1);
     result.push(available[index]);
-    available.splice(index, 1);
+    if (unique) {
+      available.splice(index, 1);
+    }
   }
   
+  return result;
+}
+
+/**
+ * Picks a random item from an array with weights
+ * @param items Array to pick from
+ * @param count Number of items to pick
+ * @param weights Array of weights corresponding to each item
+ */
+export function randomChoiceWithWeight<T>(items: T[], count: number, weights: number[]): T[] {
+  const result: T[] = [];
+  
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const normalizedWeights = weights.map(w => w / totalWeight);
+  const cumulativeWeights = normalizedWeights.map((w, i) => {
+    return i === 0 ? w : w + cumulativeWeights[i - 1];
+  });
+
+  for (let i = 0; i < count; i++) {
+    const randomValue = Math.random();
+    const index = cumulativeWeights.findIndex(w => w >= randomValue);
+    result.push(items[index]);
+  }
+
   return result;
 }
 

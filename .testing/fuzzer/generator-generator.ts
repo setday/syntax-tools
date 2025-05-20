@@ -11,7 +11,7 @@ export const generateRule = (node: g.Rule): t.ExportNamedDeclaration | t.EmptySt
     const name = t.identifier(node.name);
 
     // This would be generated separately from the grammar (so we can inser corner cases in them)
-    const specials = ["multiLineComment", "singleLineComment", "StringLiteral", "Id"];
+    const specials = ["multiLineComment", "singleLineComment", "StringLiteral", "Id", "TypeId"];
     if (specials.includes(node.name)) {
         return t.emptyStatement()
     }
@@ -77,15 +77,15 @@ export const generateRule = (node: g.Rule): t.ExportNamedDeclaration | t.EmptySt
 export const generateExpr = (node: g.Expr, ruleName: string, fieldName: undefined | string): t.Statement[] => {
     switch (node.$) {
         case 'Seq':
-            return generateSeq(node)
+            return generateSeq(node, ruleName)
         case 'Alt':
-            return generateAlt(node)
+            return generateAlt(node, ruleName)
         case 'Star':
             return generateStar(node)
         case 'Plus':
             return generatePlus(node)
         case 'Terminal':
-            return generateSeq(g.Seq([g.SeqClause(node, undefined)]))
+            return generateSeq(g.Seq([g.SeqClause(node, undefined)]), ruleName)
         case 'Class':
             return generateClass(node)
         case 'Stringify':
@@ -165,6 +165,30 @@ const storeNodeIfNotEmpty = () => t.ifStatement(
     ]),
 );
 
+// if (ctx.depth > ctx.maxDepth) {
+//     b.push(ctx.stopCodes[elementName] || "")
+//     return
+// }
+const stopIfMaxDepth = (elementName: string) => t.ifStatement(
+    t.binaryExpression(
+        '>',
+        t.memberExpression(t.identifier("ctx"), t.identifier("depth")),
+        t.memberExpression(t.identifier("ctx"), t.identifier("maxDepth"))
+    ),
+    t.blockStatement([
+        storeLeaf(t.logicalExpression(
+            '||',
+            t.memberExpression(
+                t.memberExpression(t.identifier("ctx"), t.identifier("stopCodes")),
+                t.stringLiteral(elementName),
+                true
+            ),
+            t.stringLiteral("")
+        )),
+        t.returnStatement()
+    ]),
+)
+
 // const A = (ctx: Context, b: Builder): void => {
 //     pass
 // }
@@ -226,44 +250,9 @@ export const compileCall = (call: g.Call): t.Expression => {
     return t.identifier(call.name)
 }
 
-export const generateSpaces = (): t.Statement => {
-    return t.blockStatement([])
-    const rand_spaces = t.variableDeclaration(
-        'const',
-        [
-            t.variableDeclarator(t.identifier("spaces_count"), t.callExpression(
-                t.identifier("randomInt"),
-                [
-                    t.numericLiteral(0),
-                    t.numericLiteral(2),
-                ]
-            )),
-            t.variableDeclarator(t.identifier("spaces"), t.callExpression(
-                t.identifier("\" \".repeat"),
-                [
-                    t.identifier("spaces_count"),
-                ]
-            ))
-        ]
-    );
-    const returns = t.expressionStatement(
-        t.callExpression(
-        t.memberExpression(
-            t.identifier("b2"),
-            t.identifier("push")
-        ), [
-            t.identifier("spaces"),
-        ]
-    ));
-
-    return t.blockStatement([
-        rand_spaces,
-        returns,
-    ])
-}
-
 // export const FunctionDefinition: Rule = (ctx, b, field) => {
 //     if (ctx.depth > ctx.maxDepth) {
+//         b.push(ctx.stopCodes[elementName] || "")
 //         return
 //     }
 //
@@ -282,18 +271,12 @@ export const generateCall = (call: g.Call, ruleName: string, fieldName: undefine
     const stmts: t.Statement[] = []
 
     // if (ctx.depth > ctx.maxDepth) {
+    //     b.push(ctx.stopCodes[elementName] || "")
     //     return
     // }
-    stmts.push(t.ifStatement(
-        t.binaryExpression(
-            '>',
-            t.memberExpression(t.identifier("ctx"), t.identifier("depth")),
-            t.memberExpression(t.identifier("ctx"), t.identifier("maxDepth"))
-        ),
-        t.blockStatement([
-            t.returnStatement()
-        ])
-    ))
+    if (ruleName.length > 0) { // We can't stop on the private rules
+        stmts.push(stopIfMaxDepth(ruleName[0] !== "$" ? ruleName : ruleName.slice(1)))
+    }
 
     // ctx.depth++
     stmts.push(t.expressionStatement(
@@ -726,6 +709,11 @@ function isLowerCase(str: string) {
 
 // // Or = A | B
 // const Or = (ctx: Context, b: Builder): boolean => {
+//    if (ctx.depth > ctx.maxDepth) {
+//        b.push(ctx.stopCodes[elementName] || "")
+//        return
+//    }
+//
 //    const b2: Builder = []
 // 
 //    const choice = randomInt(0, 1)
@@ -737,22 +725,16 @@ function isLowerCase(str: string) {
 //        b.push(b2)
 //    }
 // }
-export const generateAlt = (node: g.Alt): t.Statement[] => {
+export const generateAlt = (node: g.Alt, ruleName: string): t.Statement[] => {
     const stmts: t.Statement[] = []
     
     // if (ctx.depth > ctx.maxDepth) {
+    //     b.push(ctx.stopCodes[elementName] || "")
     //     return
     // }
-    stmts.push(t.ifStatement(
-        t.binaryExpression(
-            '>',
-            t.memberExpression(t.identifier("ctx"), t.identifier("depth")),
-            t.memberExpression(t.identifier("ctx"), t.identifier("maxDepth"))
-        ),
-        t.blockStatement([
-            t.returnStatement()
-        ])
-    ))
+    if (ruleName.length > 0) { // We can't stop on the private rules
+        stmts.push(stopIfMaxDepth(ruleName[0] !== "$" ? ruleName : ruleName.slice(1)))
+    }
 
     // ctx.depth++
     stmts.push(t.expressionStatement(
@@ -818,6 +800,7 @@ export const generateAlt = (node: g.Alt): t.Statement[] => {
 // Seq = A B
 // const Seq = (ctx: Context, b: Builder): void => {
 //     if (ctx.depth > ctx.maxDepth) {
+//         b.push(ctx.stopCodes[elementName] || "")
 //         return
 //     }
 //     ctx.depth++
@@ -833,22 +816,16 @@ export const generateAlt = (node: g.Alt): t.Statement[] => {
 //
 //     ctx.depth--
 // }
-export const generateSeq = (node: g.Seq): t.Statement[] => {
+export const generateSeq = (node: g.Seq, ruleName: string): t.Statement[] => {
     const stmts: t.Statement[] = []
     
     // if (ctx.depth > ctx.maxDepth) {
+    //     b.push(ctx.stopCodes[elementName] || "")
     //     return
     // }
-    stmts.push(t.ifStatement(
-        t.binaryExpression(
-            '>',
-            t.memberExpression(t.identifier("ctx"), t.identifier("depth")),
-            t.memberExpression(t.identifier("ctx"), t.identifier("maxDepth"))
-        ),
-        t.blockStatement([
-            t.returnStatement()
-        ])
-    ))
+    if (ruleName.length > 0) { // We can't stop on the private rules
+        stmts.push(stopIfMaxDepth(ruleName[0] !== "$" ? ruleName : ruleName.slice(1)))
+    }
 
     // ctx.depth++
     stmts.push(t.expressionStatement(
@@ -871,7 +848,6 @@ export const generateSeq = (node: g.Seq): t.Statement[] => {
     // B(ctx, b2)
     for (const clause of node.clauses) {
         stmts.push(t.expressionStatement(generateClause(clause.expr, clause.name, t.identifier("b2"))))
-        stmts.push(generateSpaces())
     }
 
     // if (b2.length > 0 {
